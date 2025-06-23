@@ -7,6 +7,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from config import config
 import uuid
+from openai import OpenAI
 
 class Storage:
     def __init__(self, storage_path: str = "data"):
@@ -16,7 +17,21 @@ class Storage:
         
         self._ensure_storage_exists()
         self.contexts = self._load_contexts()
-        self.model = SentenceTransformer(config.EMBEDDING_MODEL)
+        
+        # Initialize embedding model based on provider
+        if config.EMBEDDING_PROVIDER == 'openai':
+            if not config.OPENAI_API_KEY:
+                raise ValueError("OPENAI_API_KEY not set in environment variables")
+            if not config.EMBEDDING_MODEL:
+                raise ValueError("EMBEDDING_MODEL not set in environment variables")
+            self.openai_client = OpenAI(api_key=config.OPENAI_API_KEY)
+            self.model = None  # We don't need to initialize a model for OpenAI
+        else:
+            if not config.EMBEDDING_MODEL:
+                raise ValueError("EMBEDDING_MODEL not set in environment variables")
+            self.model = SentenceTransformer(config.EMBEDDING_MODEL)
+            self.openai_client = None
+        
         self.vectors = self._load_vectors()
         self.stories = {}  # project_key -> list of stories
         self.project_contexts = {}
@@ -57,8 +72,33 @@ class Storage:
         with open(self.vectors_file, 'wb') as f:
             pickle.dump(vectors, f)
 
+    def _generate_embeddings(self, texts: List[str]) -> np.ndarray:
+        """Generate embeddings for a list of texts using the configured provider"""
+        if config.EMBEDDING_PROVIDER == 'openai':
+            try:
+                # OpenAI has a limit on the number of tokens per request
+                # Process in batches of 10 texts
+                all_embeddings = []
+                batch_size = 10
+                
+                for i in range(0, len(texts), batch_size):
+                    batch_texts = texts[i:i + batch_size]
+                    response = self.openai_client.embeddings.create(
+                        model=config.EMBEDDING_MODEL,
+                        input=batch_texts
+                    )
+                    batch_embeddings = [embedding.embedding for embedding in response.data]
+                    all_embeddings.extend(batch_embeddings)
+                
+                return np.array(all_embeddings)
+            except Exception as e:
+                raise ValueError(f"Error generating OpenAI embeddings: {str(e)}")
+        else:
+            # Use sentence-transformers
+            return self.model.encode(texts, convert_to_tensor=False)
+
     def _update_vectors(self):
-        """Update vectors for all contexts using sentence transformer"""
+        """Update vectors for all contexts using the configured embedding model"""
         all_texts = []
         for contexts in self.contexts.values():
             for context in contexts:
@@ -66,8 +106,8 @@ class Storage:
                 all_texts.append(text)
         
         if all_texts:
-            # Generate embeddings using sentence transformer
-            self.vectors = self.model.encode(all_texts, convert_to_tensor=False)
+            # Generate embeddings using configured provider
+            self.vectors = self._generate_embeddings(all_texts)
             self._save_vectors(self.vectors)
         else:
             self.vectors = None
@@ -103,30 +143,41 @@ class Storage:
             metadata={'image_path': image_path}
         )
 
-    def search_project_context(self, query: str, top_k: int = 3) -> List[Dict]:
-        """Search using sentence transformer embeddings and cosine similarity"""
+    def search_project_context(self, query: str, top_k: int = 3, similarity_threshold: float = 0.5) -> List[Dict]:
+        """Search using embeddings and cosine similarity
+        
+        Args:
+            query (str): The search query
+            top_k (int, optional): Maximum number of results to return. Defaults to 3.
+            similarity_threshold (float, optional): Minimum similarity score (0-1) for results. Defaults to 0.5.
+        
+        Returns:
+            List[Dict]: List of context documents with their similarity scores
+        """
         if self.vectors is None or not self.contexts:
             return []
         
         # Generate query embedding
-        query_vector = self.model.encode([query], convert_to_tensor=False)
+        query_vector = self._generate_embeddings([query])[0]
         
         # Calculate similarities
-        similarities = cosine_similarity(query_vector, self.vectors)[0]
+        similarities = cosine_similarity([query_vector], self.vectors)[0]
         
-        # Get top k results
-        flat_contexts = [
-            context
-            for contexts in self.contexts.values()
-            for context in contexts
-        ]
+        # Get indices of top k results above threshold
+        relevant_indices = [i for i, score in enumerate(similarities) if score >= similarity_threshold]
+        if not relevant_indices:
+            return []
+            
+        top_indices = sorted(relevant_indices, key=lambda i: similarities[i], reverse=True)[:top_k]
         
-        # Sort by similarity
-        context_similarities = list(zip(flat_contexts, similarities))
-        context_similarities.sort(key=lambda x: x[1], reverse=True)
+        # Return results with similarity scores
+        results = []
+        for idx in top_indices:
+            context = self.contexts[idx].copy()
+            context['similarity_score'] = float(similarities[idx])
+            results.append(context)
         
-        # Return top k results
-        return [context for context, _ in context_similarities[:top_k]]
+        return results
 
     def get_project_contexts(self, project_key: str) -> List[Dict]:
         """Get all contexts for a specific project"""
