@@ -6,14 +6,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # API Keys
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 # Model configurations
-LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'openai')  # 'openai' or 'gemini'
-LLM_MODEL = os.getenv('LLM_MODEL', 'gpt-4-turbo-preview')  # for Gemini: 'gemini-pro'
-EMBEDDING_PROVIDER = os.getenv('EMBEDDING_PROVIDER', 'openai')  # 'openai' or 'sentence-transformers'
-EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')  # for sentence-transformers: 'all-MiniLM-L6-v2'
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'openai')  # Only OpenAI supported
+LLM_MODEL = os.getenv('LLM_MODEL', 'gpt-4-turbo-preview')
+EMBEDDING_PROVIDER = os.getenv('EMBEDDING_PROVIDER', 'openai')  # Only OpenAI supported
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
 
 # Jira configuration
 JIRA_URL = os.getenv('JIRA_URL')
@@ -28,13 +27,12 @@ CONFLUENCE_API_TOKEN = os.getenv('CONFLUENCE_API_TOKEN')
 class Config:
     # API Keys
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
-    GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")
     
     # Model configurations
-    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "gemini")  # 'openai' or 'gemini'
-    LLM_MODEL: str = os.getenv("LLM_MODEL")  # Use any valid model name
-    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "sentence-transformers")  # 'openai' or 'sentence-transformers'
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL")  # Use any valid model name
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")  # Only OpenAI supported
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4-turbo-preview")
+    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "openai")  # Only OpenAI supported
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
     
     # Application settings
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"

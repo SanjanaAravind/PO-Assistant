@@ -1,6 +1,7 @@
 from typing import Dict, Any, Optional, List
 from storage import storage
-from llm_providers import DummyLLMProvider, GeminiProvider, LLMProvider
+from llm_providers import DummyLLMProvider, OpenAIProvider, LLMProvider
+from config import config
 
 class LLMProviderError(Exception):
     """Exception raised for errors in LLM providers"""
@@ -10,9 +11,13 @@ class RAGEngine:
     def __init__(self):
         self.providers = {
             "dummy": DummyLLMProvider(),
-            "gemini": GeminiProvider()  # Add Gemini provider
+            "openai": OpenAIProvider()
         }
-        self.current_provider = self.providers["gemini"]  # Set Gemini as default
+        # Set provider based on configuration
+        provider_name = config.LLM_PROVIDER
+        if provider_name not in self.providers:
+            raise ValueError(f"Provider {provider_name} not found. Available providers: {list(self.providers.keys())}")
+        self.current_provider = self.providers[provider_name]
 
     def set_provider(self, provider_name: str):
         """Set the current LLM provider"""
@@ -21,8 +26,11 @@ class RAGEngine:
         self.current_provider = self.providers[provider_name]
 
     def set_default_provider(self):
-        """Set the default provider (Gemini)"""
-        self.current_provider = self.providers["gemini"]
+        """Set the default provider (from config)"""
+        provider_name = config.LLM_PROVIDER
+        if provider_name not in self.providers:
+            raise ValueError(f"Default provider {provider_name} not found. Available providers: {list(self.providers.keys())}")
+        self.current_provider = self.providers[provider_name]
 
     def run_pipeline(self, project_key: str, user_question: str) -> str:
         """Run the RAG pipeline"""

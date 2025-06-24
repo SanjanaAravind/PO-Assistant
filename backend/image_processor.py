@@ -2,7 +2,7 @@ import os
 import base64
 from typing import Dict, Optional
 from PIL import Image
-import google.generativeai as genai
+from openai import OpenAI
 from config import config
 import time
 
@@ -11,9 +11,10 @@ class ImageProcessor:
         self.image_storage_path = image_storage_path
         self._ensure_storage_exists()
         
-        # Configure Gemini
-        genai.configure(api_key=config.GEMINI_API_KEY)
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        # Configure OpenAI
+        if not config.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY not set in environment variables")
+        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
 
     def _ensure_storage_exists(self):
         """Ensure the image storage directory exists"""
@@ -26,7 +27,7 @@ class ImageProcessor:
 
     def save_image(self, image_path: str, project_key: str) -> Dict:
         """
-        Save an image and generate its description using Gemini
+        Save an image and generate its description using OpenAI Vision
         Returns a dict with image metadata and description
         """
         # Validate image
@@ -47,14 +48,31 @@ class ImageProcessor:
         with Image.open(image_path) as img:
             img.save(target_path, format=img_format)
 
-        # Generate description using Gemini
+        # Generate description using OpenAI Vision
         try:
-            with Image.open(target_path) as img:
-                response = self.model.generate_content([
-                    "Describe this image in detail, focusing on any text, diagrams, or technical content visible. If it's a screenshot or technical diagram, explain its components and purpose.",
-                    img
-                ])
-            description = response.text
+            with open(target_path, "rb") as image_file:
+                response = self.client.chat.completions.create(
+                    model="gpt-4-vision-preview",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Describe this image in detail, focusing on any text, diagrams, or technical content visible. If it's a screenshot or technical diagram, explain its components and purpose."
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/{img_format};base64,{self._encode_image(target_path)}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=500
+                )
+            description = response.choices[0].message.content
         except Exception as e:
             description = f"Error generating description: {str(e)}"
 
